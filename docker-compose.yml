@@ -67,6 +67,23 @@ services:
       timeout: 5s
       retries: 10
 
+  topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: topic-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        rpk topic create fx.rates macro.history fx.anomalies \
+          --brokers redpanda:9092 \
+          --partitions 3 \
+          --replicas 1
+    restart: "no"
+
+
 volumes:
   redpanda_data:
   timescale_data:
