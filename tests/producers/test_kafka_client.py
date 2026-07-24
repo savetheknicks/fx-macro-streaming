@@ -50,5 +50,11 @@ class TestProducerEvent:
         assert mock_producer.produce.call_args[0][0] == "fx-rates"
         assert json.loads(kwargs["value"].decode("utf-8")) == event
         assert kwargs["callback"] is delivery_report
+    
+    def test_polls_after_produce(self):
+        mock_producer = MagicMock()
+        
+        producer_event(mock_producer, "fx-rates", {"a":1})
+        mock_producer.poll.assert_called_once_with(0)
         
         
