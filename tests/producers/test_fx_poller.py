@@ -49,10 +49,38 @@ class TestFetchRate:
         
     @patch("time.sleep", return_value=None)
     @patch("producers.fx_poller.requests.get")
-    def test_note_field_is_treated_as_rate_limiting(self, mock_get, _sleep):
+    def test_raises_rate_limited_when_note_field_present(self, mock_get, _sleep):
         mock_get.return_value = make_response({"Note": "Thank you for use Alpha Vantage!"})
-        
+
+        with pytest.raises(RateLimited):
+            fetch_rate("USD", "EUR")
+
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.requests.get")
+    def test_raises_rate_limited_when_information_field_present(self, mock_get, _sleep):
+        mock_get.return_value = make_response({"Information": "rate limit reached"})
+
         with pytest.raises(RateLimited):
             fetch_rate("USD", "EUR")
             
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.requests.get")
+    def test_rejects_a_payload_missing_the_expected_quote(self, mock_get, _sleep):
+        mock_get.return_value = make_response({"unexpected": "shape"})
+
+        with pytest.raises(ValueError, match="unexpected response shape"):
+            fetch_rate("USD", "EUR")
+            
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.requests.get")
+    def test_recovers_from_a_transient_failure_within_retry_budget(self, mock_get, _sleep):
+        mock_get.side_effect = [
+            requests.exceptions.ConnectionError("connection error"),
+            alpha_vantage_response("0.9123"),
+        ]
+        
+        event = fetch_rate("USD", "EUR")
+        
+        assert event["pair"] == "USD/EUR"
+        assert event["rate"] == 0.9123
     
