@@ -36,7 +36,7 @@ def fetch_rate(from_currency: str, to_currency: str) -> dict:
         logger.warning("alpha vantage rate limit hit: %s", payload.get("Note") or payload.get("Information"))
         raise RateLimited(payload)
     
-    quote = payload.get("Realtime Currency Exchange")
+    quote = payload.get("Realtime Currency Exchange Rate")
     if quote is None:
         raise ValueError(f"unexpected response shape: {payload}")
     
