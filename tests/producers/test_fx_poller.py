@@ -84,3 +84,60 @@ class TestFetchRate:
         assert event["pair"] == "USD/EUR"
         assert event["rate"] == 0.9123
     
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.requests.get")
+    def test_gives_up_once_retry_budget_exhausted(self, mock_get, _sleep):
+        mock_get.side_effect = requests.exceptions.ConnectionError("connection error")
+        
+        with pytest.raises(requests.exceptions.ConnectionError):
+            fetch_rate("USD", "EUR")
+        
+        assert mock_get.call_count == 5
+        
+class TestRunBusinessLogic:
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.producer_event")
+    @patch("producers.fx_poller.make_producer")
+    @patch("producers.fx_poller.requests.get")
+    @patch("producers.fx_poller.FX_PAIRS", [("USD", "EUR"), ("USD", "JPY")])
+    def test_a_rate_limited_pair_does_not_block_the_rest_of_the_cycle(self, mock_get, mock_make_producer, mock_producer_event, _sleep):
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+        
+        def fake_get(url, params, timeout):
+            if (params["from_currency"], params["to_currency"]) == ("USD", "EUR"):
+                return make_response({"Note": "Thank you for using Alpha Vantage!"})
+            return alpha_vantage_response("155.42")
+        
+        mock_get.side_effect = fake_get
+        
+        run()
+        
+        published_pair = [c.args[2]["pair"] for c in mock_producer_event.call_args_list]
+        assert published_pair == ["USD/JPY"]
+        
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.producer_event")
+    @patch("producers.fx_poller.make_producer")
+    @patch("producers.fx_poller.requests.get")
+    @patch("producers.fx_poller.FX_PAIRS", [("USD", "EUR"), ("USD", "JPY")])
+    def test_each_pair_is_published_with_its_own_data(self, mock_get, mock_make_producer, mock_producer_event, _sleep):
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+        
+        responses = {
+            ("USD", "EUR"): alpha_vantage_response("0.9123"),
+            ("USD", "JPY"): alpha_vantage_response("155.42"),
+        }
+        
+        mock_get.side_effect = lambda url, params, timeout: responses[
+            (params["from_currency"], params["to_currency"])
+        ]
+        
+        run()
+        
+        events_by_pair = {c.args[2]["pair"]: c.args[2] for c in mock_producer_event.call_args_list}
+        assert events_by_pair["USD/EUR"]["rate"] == 0.9123
+        assert events_by_pair["USD/JPY"]["rate"] == 155.42
