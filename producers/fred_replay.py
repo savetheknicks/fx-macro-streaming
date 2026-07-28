@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
 
 from producers.config import FRED_API_KEY, FRED_CACHE_PATH, FRED_REPLAY_INTERVAL_SECONDS, FRED_SERIES
 from producers.kafka_client import make_producer, producer_event
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 FRED_URL = "https://api.stlouisfed.org/fred/series/observations"
 TOPIC = "macro.history"
 
-@retry(stop=stop_after_attempt(5), wait=wait_exponential_jitter(initial=5, max=120))
+@retry(retry=retry_if_exception_type(requests.exceptions.RequestException),stop=stop_after_attempt(5), wait=wait_exponential_jitter(initial=5, max=120), reraise=True)
 def fetch_series(series_id: str) -> list[dict]:
     params = {"series_id": series_id, "api_key": FRED_API_KEY, "file_type": "json"}
     response = requests.get(FRED_URL, params=params, timeout=10)
