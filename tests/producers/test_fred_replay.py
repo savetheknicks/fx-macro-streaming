@@ -100,4 +100,187 @@ class TestFetchSeries:
         
         with pytest.raises(KeyError):
             fetch_series("DGS10")
+
+class TestLoadOrFetchHistory:
+    @patch("producers.fred_replay.json")
+    @patch("producers.fred_replay.open", new_callable=mock_open)
+    @patch("producers.fred_replay.os.path.exists", return_value=False)
+    @patch("producers.fred_replay.fetch_series")
+    @patch("producers.fred_replay.FRED_SERIES", ["DGS10", "DEXUSEU"])
+    def test_fetches_and_merges_all_configured_series_when_no_cache(
+        self, mock_fetch_series, _exists, _open, mock_json
+    ):
+        mock_fetch_series.side_effect = lambda series_id: {
+            "DGS10": [{"series_id": "DGS10", "period": "2026-02-01", "value": "4.25"}],
+            "DEXUSEU": [{"series_id": "DEXUSEU", "period": "2026-01-01", "value": "1.08"}],
+        }[series_id]
         
+        history = load_or_fetch_history()
+        
+        assert mock_fetch_series.call_args_list == [call("DGS10"), call("DEXUSEU")]
+        assert [obs["period"] for obs in history] == ["2026-01-01", "2026-02-01"]
+        
+    @patch("producers.fred_replay.json")
+    @patch("producers.fred_replay.open", new_callable=mock_open)
+    @patch("producers.fred_replay.os.path.exists", return_value=False)
+    @patch("producers.fred_replay.fetch_series")
+    @patch("producers.fred_replay.FRED_SERIES", ["DGS10", "DEXUSEU"])
+    def test_sorts_merged_history_by_period_across_series(
+        self, mock_fetch_series, _exists, _open, mock_json
+    ):
+        mock_fetch_series.side_effect = lambda series_id: {
+            "DGS10": [
+                {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+                {"series_id": "DGS10", "period": "2026-03-01", "value": "4.40"},
+            ],
+            "DEXUSEU": [
+                {"series_id": "DEXUSEU", "period": "2026-02-01", "value": "1.08"},
+            ],
+        }[series_id]
+
+        history = load_or_fetch_history()
+
+        assert [obs["period"] for obs in history] == [
+            "2026-01-01", "2026-02-01", "2026-03-01",
+        ]
+    
+    @patch("producers.fred_replay.json")
+    @patch("producers.fred_replay.open", new_callable=mock_open)
+    @patch("producers.fred_replay.os.path.exists", return_value=False)
+    @patch("producers.fred_replay.fetch_series", return_value=[{"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"}])
+    @patch("producers.fred_replay.FRED_SERIES", ["DGS10"])
+    def test_writes_fetched_history_to_cache_file(
+        self, _fetch_series, _exists, mock_open_call, mock_json
+    ):
+        load_or_fetch_history()
+
+        mock_json.dump.assert_called_once()
+        written_history, file_handle = mock_json.dump.call_args.args
+        assert written_history == [{"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"}]
+        
+        
+    @patch("producers.fred_replay.json")
+    @patch("producers.fred_replay.open", new_callable=mock_open)
+    @patch("producers.fred_replay.os.path.exists", return_value=True)
+    @patch("producers.fred_replay.fetch_series")
+    def test_loads_from_cache_when_file_exists(
+        self, mock_fetch_series, _exists, _open, mock_json
+    ):
+        cached_history = [{"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"}]
+        mock_json.load.return_value = cached_history
+
+        history = load_or_fetch_history()
+
+        assert history == cached_history
+        mock_fetch_series.assert_not_called()
+        
+    @patch("producers.fred_replay.json")
+    @patch("producers.fred_replay.open", new_callable=mock_open)
+    @patch("producers.fred_replay.os.path.exists", return_value=False)
+    @patch("producers.fred_replay.fetch_series")
+    @patch("producers.fred_replay.FRED_SERIES", ["DGS10", "DEXUSEU"])
+    def test_propagates_error_and_skips_cache_write_when_a_series_fetch_fails(
+        self, mock_fetch_series, _exists, _open, mock_json
+    ):
+        mock_fetch_series.side_effect = [
+            [{"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"}],
+            requests.exceptions.ConnectionError("connection error"),
+        ]
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            load_or_fetch_history()
+
+        mock_json.dump.assert_not_called()
+        
+class TestRun:
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fred_replay.producer_event")
+    @patch("producers.fred_replay.make_producer")
+    @patch("producers.fred_replay.load_or_fetch_history")
+    def test_publishes_each_observation_to_macro_history_topic(
+        self, mock_load_history, mock_make_producer, mock_producer_event, _sleep
+    ):
+        mock_load_history.return_value = [
+            {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+            {"series_id": "DEXUSEU", "period": "2026-01-01", "value": "1.08"},
+        ]
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+
+        run()
+
+        topics = [c.args[1] for c in mock_producer_event.call_args_list]
+        assert topics == ["macro.history", "macro.history"]
+    
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fred_replay.producer_event")
+    @patch("producers.fred_replay.make_producer")
+    @patch("producers.fred_replay.load_or_fetch_history")
+    def test_event_payload_matches_expected_schema(
+        self, mock_load_history, mock_make_producer, mock_producer_event, _sleep
+    ):
+        mock_load_history.return_value = [
+            {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+        ]
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+
+        run()
+
+        event = mock_producer_event.call_args_list[0].args[2]
+        assert event["series_id"] == "DGS10"
+        assert event["value"] == 4.25
+        assert event["period"] == "2026-01-01"
+        assert event["source"] == "fred"
+        assert uuid.UUID(event["event_id"])
+        assert datetime.fromisoformat(event["replayed_at"]).tzinfo is not None
+    
+    @patch("producers.fred_replay.FRED_REPLAY_INTERVAL_SECONDS", 5)
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fred_replay.producer_event")
+    @patch("producers.fred_replay.make_producer")
+    @patch("producers.fred_replay.load_or_fetch_history")
+    def test_sleeps_between_each_event_by_configured_interval(
+        self, mock_load_history, mock_make_producer, mock_producer_event, mock_sleep
+    ):
+        mock_load_history.return_value = [
+            {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+            {"series_id": "DGS10", "period": "2026-02-01", "value": "4.30"},
+        ]
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+
+        run()
+
+        assert mock_sleep.call_args_list == [call(5), call(5)]
+        
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fred_replay.producer_event")
+    @patch("producers.fred_replay.make_producer")
+    @patch("producers.fred_replay.load_or_fetch_history")
+    def test_flushes_and_loops_back_after_reaching_end_of_history(
+        self, mock_load_history, mock_make_producer, mock_producer_event, _sleep
+    ):
+        mock_load_history.return_value = [
+            {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+        ]
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+
+        state = {"calls": 0}
+
+        def _flush_side_effect(timeout):
+            state["calls"] += 1
+            if state["calls"] == 2:
+                raise KeyboardInterrupt
+
+        mock_producer.flush.side_effect = _flush_side_effect
+
+        run()
+
+        # one flush(5) per completed pass, plus flush(10) in the finally block
+        assert mock_producer.flush.call_args_list == [call(5), call(5), call(10)]
+        assert mock_producer_event.call_count == 2
