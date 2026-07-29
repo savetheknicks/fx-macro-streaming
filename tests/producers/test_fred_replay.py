@@ -284,3 +284,21 @@ class TestRun:
         # one flush(5) per completed pass, plus flush(10) in the finally block
         assert mock_producer.flush.call_args_list == [call(5), call(5), call(10)]
         assert mock_producer_event.call_count == 2
+        
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fred_replay.producer_event")
+    @patch("producers.fred_replay.make_producer")
+    @patch("producers.fred_replay.load_or_fetch_history")
+    def test_shuts_down_gracefully_and_flushes_on_keyboard_interrupt(
+        self, mock_load_history, mock_make_producer, mock_producer_event, _sleep
+    ):
+        mock_load_history.return_value = [
+            {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+        ]
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+
+        run()  # should not raise
+
+        mock_producer.flush.assert_called_with(10)
