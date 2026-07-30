@@ -15,6 +15,6 @@ def delivery_report(err: KafkaError, msg: Message) -> None:
     else:
         logger.debug("delivered to %s [%d] @ %d", msg.topic(), msg.partition(), msg.offset())
         
-def producer_event(producer: Producer, topic: str, event: dict) -> None:
-    producer.produce(topic, value=json.dumps(event).encode("utf-8"), callback=delivery_report)
+def producer_event(producer: Producer, topic: str, key: str | None, event: dict) -> None:
+    producer.produce(topic, key=key.encode("utf-8") if key is not None else None, value=json.dumps(event).encode("utf-8"), callback=delivery_report)
     producer.poll(0)
