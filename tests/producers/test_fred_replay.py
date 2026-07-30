@@ -229,14 +229,34 @@ class TestRun:
 
         run()
 
-        event = mock_producer_event.call_args_list[0].args[2]
+        event = mock_producer_event.call_args_list[0].args[3]
         assert event["series_id"] == "DGS10"
         assert event["value"] == 4.25
         assert event["period"] == "2026-01-01"
         assert event["source"] == "fred"
         assert uuid.UUID(event["event_id"])
         assert datetime.fromisoformat(event["replayed_at"]).tzinfo is not None
-    
+
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fred_replay.producer_event")
+    @patch("producers.fred_replay.make_producer")
+    @patch("producers.fred_replay.load_or_fetch_history")
+    def test_keys_each_event_by_series_id(
+        self, mock_load_history, mock_make_producer, mock_producer_event, _sleep
+    ):
+        mock_load_history.return_value = [
+            {"series_id": "DGS10", "period": "2026-01-01", "value": "4.25"},
+            {"series_id": "DEXUSEU", "period": "2026-01-01", "value": "1.08"},
+        ]
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+
+        run()
+
+        keys = [c.args[2] for c in mock_producer_event.call_args_list]
+        assert keys == ["DGS10", "DEXUSEU"]
+
     @patch("producers.fred_replay.FRED_REPLAY_INTERVAL_SECONDS", 5)
     @patch("time.sleep", return_value=None)
     @patch("producers.fred_replay.producer_event")
