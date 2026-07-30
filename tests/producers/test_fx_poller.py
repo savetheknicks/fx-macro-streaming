@@ -114,9 +114,9 @@ class TestRunBusinessLogic:
         
         run()
         
-        published_pair = [c.args[2]["pair"] for c in mock_producer_event.call_args_list]
+        published_pair = [c.args[3]["pair"] for c in mock_producer_event.call_args_list]
         assert published_pair == ["USD/JPY"]
-        
+
     @patch("time.sleep", return_value=None)
     @patch("producers.fx_poller.producer_event")
     @patch("producers.fx_poller.make_producer")
@@ -138,6 +138,30 @@ class TestRunBusinessLogic:
         
         run()
         
-        events_by_pair = {c.args[2]["pair"]: c.args[2] for c in mock_producer_event.call_args_list}
+        events_by_pair = {c.args[3]["pair"]: c.args[3] for c in mock_producer_event.call_args_list}
         assert events_by_pair["USD/EUR"]["rate"] == 0.9123
         assert events_by_pair["USD/JPY"]["rate"] == 155.42
+
+    @patch("time.sleep", return_value=None)
+    @patch("producers.fx_poller.producer_event")
+    @patch("producers.fx_poller.make_producer")
+    @patch("producers.fx_poller.requests.get")
+    @patch("producers.fx_poller.FX_PAIRS", [("USD", "EUR"), ("USD", "JPY")])
+    def test_each_event_is_keyed_by_its_pair(self, mock_get, mock_make_producer, mock_producer_event, _sleep):
+        mock_producer = MagicMock()
+        mock_make_producer.return_value = mock_producer
+        stop_after_one_cycle(mock_producer)
+
+        responses = {
+            ("USD", "EUR"): alpha_vantage_response("0.9123"),
+            ("USD", "JPY"): alpha_vantage_response("155.42"),
+        }
+
+        mock_get.side_effect = lambda url, params, timeout: responses[
+            (params["from_currency"], params["to_currency"])
+        ]
+
+        run()
+
+        keys = [c.args[2] for c in mock_producer_event.call_args_list]
+        assert keys == ["USD/EUR", "USD/JPY"]
