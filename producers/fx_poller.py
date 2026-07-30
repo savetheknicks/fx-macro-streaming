@@ -56,7 +56,7 @@ def run() -> None:
             for from_currency, to_currency in FX_PAIRS:
                 try:
                     event = fetch_rate(from_currency, to_currency)
-                    producer_event(producer, TOPIC, event)
+                    producer_event(producer, TOPIC, event["pair"], event)
                     logger.info("published %s", event)
                 except RateLimited:
                     logger.warning("giving up on %s/%s this cycle after retries", from_currency, to_currency)
