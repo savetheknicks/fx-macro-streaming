@@ -41,20 +41,34 @@ class TestProducerEvent:
     def test_produces_json_encoded_event_with_callback(self):
         mock_producer = MagicMock()
         event = {"symbol": "EURUSD", "rate": 1.09}
-        
-        producer_event(mock_producer, "fx-rates", event)
-        
+
+        producer_event(mock_producer, "fx-rates", "EURUSD", event)
+
         mock_producer.produce.assert_called_once()
         _, kwargs = mock_producer.produce.call_args
-        
+
         assert mock_producer.produce.call_args[0][0] == "fx-rates"
         assert json.loads(kwargs["value"].decode("utf-8")) == event
         assert kwargs["callback"] is delivery_report
-    
+
     def test_polls_after_produce(self):
         mock_producer = MagicMock()
-        
-        producer_event(mock_producer, "fx-rates", {"a":1})
+
+        producer_event(mock_producer, "fx-rates", "EURUSD", {"a": 1})
         mock_producer.poll.assert_called_once_with(0)
-        
-        
+
+    def test_encodes_key_to_utf8_bytes(self):
+        mock_producer = MagicMock()
+
+        producer_event(mock_producer, "fx-rates", "EUR/USD", {"a": 1})
+
+        _, kwargs = mock_producer.produce.call_args
+        assert kwargs["key"] == b"EUR/USD"
+
+    def test_passes_none_key_through_as_none(self):
+        mock_producer = MagicMock()
+
+        producer_event(mock_producer, "fx-rates", None, {"a": 1})
+
+        _, kwargs = mock_producer.produce.call_args
+        assert kwargs["key"] is None
