@@ -34,7 +34,7 @@ def load_or_fetch_history() -> list[dict]:
     if os.path.exists(FRED_CACHE_PATH):
         logger.info("loading cached FRED history from %s", FRED_CACHE_PATH)
         with open(FRED_CACHE_PATH) as f:
-            return json.load()
+            return json.load(f)
         
     logger.info("fetching FRED history for %s", FRED_SERIES)
     history = []
@@ -62,7 +62,7 @@ def run() -> None:
                     "source": "fred",
                     "replayed_at": datetime.now(timezone.utc).isoformat(),
                 }
-                producer_event(producer, TOPIC, event)
+                producer_event(producer, TOPIC, event["series_id"], event)
                 time.sleep(FRED_REPLAY_INTERVAL_SECONDS)
             producer.flush(5)
             logger.info("replay reached end of history, looping back to start")
