@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13.1"
 dependencies = [
     "confluent-kafka>=2.15.0",
+    "psycopg>=3.3.4",
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
     "tenacity>=9.1.4",
