@@ -219,3 +219,6 @@ __marimo__/
 
 # cache files
 fred_cache.json
+
+# claude md file
+CLAUDE.md
