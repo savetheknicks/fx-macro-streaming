@@ -62,3 +62,93 @@ class TestHandleMessage:
 
         with pytest.raises(KeyError):
             handle_message(conn, msg)
+            
+    class TestRun:
+        @patch("consumers.sink_consumer.make_connection")
+        @patch("consumers.sink_consumer.make_consumer")
+        @patch("consumers.sink_consumer.handle_message")
+        def test_commits_offset_after_successful_processing(
+            self, mock_handle, mock_make_consumer, mock_make_connection
+        ):
+            consumer = MagicMock()
+            msg = MagicMock()
+            msg.error.return_value = None
+            consumer.poll.side_effect = [msg, KeyboardInterrupt()]
+            mock_make_consumer.return_value = consumer
+
+            run()
+
+            mock_handle.assert_called_once_with(mock_make_connection.return_value, msg)
+            consumer.commit.assert_called_once_with(msg)
+            
+        @patch("consumers.sink_consumer.make_connection")
+        @patch("consumers.sink_consumer.make_consumer")
+        @patch("consumers.sink_consumer.handle_message")
+        def test_skips_when_poll_returns_none(
+            self, mock_handle, mock_make_consumer, mock_make_connection
+        ):
+            consumer = MagicMock()
+            consumer.poll.side_effect = [None, KeyboardInterrupt()]
+            mock_make_consumer.return_value = consumer
+
+            run()
+
+            mock_handle.assert_not_called()
+            consumer.commit.assert_not_called()
+            
+        @patch("consumers.sink_consumer.make_connection")
+        @patch("consumers.sink_consumer.make_consumer")
+        @patch("consumers.sink_consumer.handle_message")
+        def test_logs_and_continues_on_kafka_error(
+            self, mock_handle, mock_make_consumer, mock_make_connection, caplog
+        ):
+            consumer = MagicMock()
+            error_msg = MagicMock()
+            error_msg.error.return_value = "some kafka error"
+            consumer.poll.side_effect = [error_msg, KeyboardInterrupt()]
+            mock_make_consumer.return_value = consumer
+
+            with caplog.at_level(logging.ERROR, logger="consumers.sink_consumer"):
+                run()
+
+            mock_handle.assert_not_called()
+            assert "kafka error" in caplog.text
+            
+        @patch("consumers.sink_consumer.make_connection")
+        @patch("consumers.sink_consumer.make_consumer")
+        @patch("consumers.sink_consumer.handle_message")
+        def test_rolls_back_and_does_not_commit_on_handler_failure(
+            self, mock_handle, mock_make_consumer, mock_make_connection, caplog
+        ):
+            consumer = MagicMock()
+            msg = MagicMock()
+            msg.error.return_value = None
+            msg.topic.return_value = "fx.rates"
+            msg.partition.return_value = 0
+            msg.offset.return_value = 42
+            consumer.poll.side_effect = [msg, KeyboardInterrupt()]
+            mock_make_consumer.return_value = consumer
+            mock_handle.side_effect = Exception("boom")
+            conn = mock_make_connection.return_value
+
+            with caplog.at_level(logging.ERROR, logger="consumers.sink_consumer"):
+                run()
+
+            conn.rollback.assert_called_once()
+            consumer.commit.assert_not_called()
+            assert "failed to process" in caplog.text
+            
+        @patch("consumers.sink_consumer.make_connection")
+        @patch("consumers.sink_consumer.make_consumer")
+        def test_closes_consumer_and_connection_on_shutdown(
+            self, mock_make_consumer, mock_make_connection
+        ):
+            consumer = MagicMock()
+            consumer.poll.side_effect = KeyboardInterrupt()
+            mock_make_consumer.return_value = consumer
+            conn = mock_make_connection.return_value
+
+            run()
+
+            consumer.close.assert_called_once()
+            conn.close.assert_called_once()
