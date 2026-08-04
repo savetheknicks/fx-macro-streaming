@@ -9,8 +9,8 @@ INSERT_FX_RATE = """
 """
 
 INSERT_MACRO_OBSERVATION = """
-    INSERT INTO macro_history (time, event_id, series_id, value, source, replayed_at)
-    VALUES (%(period)s, %(event_id)s, %(series_id)s, %(value)s, %(source)s, %(replayed_at)s)
+    INSERT INTO macro_history (time, event_id, series_id, value, source, ingested_at)
+    VALUES (%(period)s, %(event_id)s, %(series_id)s, %(value)s, %(source)s, %(ingested_at)s)
     ON CONFLICT (time, event_id) DO NOTHING
 """
 
