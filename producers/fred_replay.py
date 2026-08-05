@@ -60,7 +60,7 @@ def run() -> None:
                     "value": float(obs["value"]),
                     "period": obs["period"],
                     "source": "fred",
-                    "replayed_at": datetime.now(timezone.utc).isoformat(),
+                    "ingested_at": datetime.now(timezone.utc).isoformat(),
                 }
                 producer_event(producer, TOPIC, event["series_id"], event)
                 time.sleep(FRED_REPLAY_INTERVAL_SECONDS)

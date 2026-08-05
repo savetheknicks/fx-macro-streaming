@@ -235,7 +235,7 @@ class TestRun:
         assert event["period"] == "2026-01-01"
         assert event["source"] == "fred"
         assert uuid.UUID(event["event_id"])
-        assert datetime.fromisoformat(event["replayed_at"]).tzinfo is not None
+        assert datetime.fromisoformat(event["ingested_at"]).tzinfo is not None
 
     @patch("time.sleep", return_value=None)
     @patch("producers.fred_replay.producer_event")
