@@ -37,7 +37,7 @@ def _macro_observation_event(**overrides):
         "value": "3.1",
         "source": "test",
         "period": datetime(2026, 1, 1, tzinfo=timezone.utc),
-        "replayed_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "ingested_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
     event.update(overrides)
     return event
@@ -54,3 +54,43 @@ class TestInsertFXRate:
             [event["event_id"]],
         ).fetchone()
         assert row == ("EURUSD", "test")
+    
+    def test_duplicate_event_id_is_ignored(self, conn):
+        event = _fx_rate_event()
+        insert_fx_rate(conn, event)
+
+        inserted_again = insert_fx_rate(conn, event)
+
+        assert inserted_again is False
+        rows = conn.execute(
+            "SELECT count(*) FROM fx_rates WHERE event_id = %s",
+            [event["event_id"]],
+        ).fetchone()
+        assert rows == (1,)
+        
+class TestInsertMacroObservation:
+    
+    def test_inserts_a_new_row(self, conn):
+        event = _macro_observation_event()
+
+        inserted = insert_macro_observation(conn, event)
+
+        assert inserted is True
+        row = conn.execute(
+            "SELECT series_id, source FROM macro_history WHERE event_id = %s",
+            [event["event_id"]],
+        ).fetchone()
+        assert row == ("CPIAUCSL", "test")
+        
+    def test_duplicate_event_id_is_ignored(self, conn):
+        event = _macro_observation_event()
+        insert_macro_observation(conn, event)
+
+        inserted_again = insert_macro_observation(conn, event)
+
+        assert inserted_again is False
+        rows = conn.execute(
+            "SELECT count(*) FROM macro_history WHERE event_id = %s",
+            [event["event_id"]],
+        ).fetchone()
+        assert rows == (1,)
