@@ -6,6 +6,7 @@ run:
 	uv run python -m producers.fx_poller & \
 	uv run python -m producers.fred_replay & \
 	uv run python -m consumers.sink_consumer & \
+	uv run python -m stream_processor.processor & \
 	wait
 
 up:
