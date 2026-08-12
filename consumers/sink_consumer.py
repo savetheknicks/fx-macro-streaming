@@ -3,7 +3,7 @@ import logging
 
 from confluent_kafka import KafkaError, Message
 
-from db.timescale import insert_fx_rate, insert_macro_observation, make_connection
+from db.timescale import insert_fx_anomaly, insert_fx_rate, insert_macro_observation, make_connection
 from consumers.kafka_client import make_consumer
 
 logging.basicConfig(level=logging.INFO)
@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 TOPIC_HANDLERS = {
     "fx.rates": insert_fx_rate,
     "macro.history": insert_macro_observation,
+    "fx.anomalies": insert_fx_anomaly
 }
 
 def handle_message(conn, msg: Message):
