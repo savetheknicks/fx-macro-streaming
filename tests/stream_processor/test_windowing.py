@@ -69,10 +69,25 @@ class TestPairWindow:
     def test_zero_variance_baseline_does_not_divide_by_zero(self):
         window = PairWindow(window_seconds=300, z_threshold=3.0, min_samples=3)
 
-        window.add(dt(0), 1.0)
-        window.add(dt(60), 1.1)
-        window.add(dt(120), 1.2)
-        snapshot = window.add(dt(180), 5.0)
+        # Constant 10% step each tick -> identical percentage deltas -> zero baseline stdev.
+        window.add(dt(0), 1.00)
+        window.add(dt(60), 1.10)
+        window.add(dt(120), 1.21)
+        snapshot = window.add(dt(180), 5.00)
+
+        assert snapshot.z_score is None
+        assert snapshot.is_anomaly is False
+
+    def test_does_not_inflate_z_score_when_baseline_is_near_flat(self):
+        window = PairWindow(window_seconds=300, z_threshold=3.0, min_samples=3)
+
+        # Baseline ticks are ~unchanged (a stale/coarsely-quoted quote, e.g. USD/JPY
+        # polled faster than the upstream refreshes), so baseline stdev is tiny but not
+        # exactly zero. A real move on top of that must not blow up into an absurd z-score.
+        window.add(dt(0), 150.00)
+        window.add(dt(60), 150.00)
+        window.add(dt(120), 150.01)
+        snapshot = window.add(dt(180), 152.00)
 
         assert snapshot.z_score is None
         assert snapshot.is_anomaly is False
