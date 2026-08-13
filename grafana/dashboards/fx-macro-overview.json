@@ -1,0 +1,77 @@
+{
+  "uid": "fx-macro-overview",
+  "title": "FX Macro Streaming Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Anomalies",
+        "enable": true,
+        "iconColor": "red",
+        "datasource": { "type": "postgres", "uid": "timescaledb" },
+        "target": {
+          "rawSql": "SELECT window_end AS time, pair || ' anomaly z=' || z_score AS text, pair AS tags FROM fx_anomalies WHERE $__timeFilter(window_end)",
+          "format": "table"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "FX Rate (raw vs. 5m rolling avg, computed in TimescaleDB)",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "targets": [
+        {
+          "rawSql": "SELECT time, pair || ' raw' AS metric, rate::float8 AS value FROM fx_rates WHERE $__timeFilter(time) UNION ALL SELECT time, pair || ' 5m avg' AS metric, avg(rate::float8) OVER (PARTITION BY pair ORDER BY time RANGE BETWEEN INTERVAL '5 minutes' PRECEDING AND CURRENT ROW) AS value FROM fx_rates WHERE $__timeFilter(time) ORDER BY time",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Anomalies (last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "targets": [
+        {
+          "rawSql": "SELECT count(*) AS value FROM fx_anomalies WHERE time > now() - interval '24 hours'",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Recent Anomalies",
+      "type": "table",
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "targets": [
+        {
+          "rawSql": "SELECT time, pair, rate::float8 AS rate, z_score::float8 AS z_score, window_start, window_end FROM fx_anomalies WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 100",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Macro History",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 15 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "targets": [
+        {
+          "rawSql": "SELECT time, series_id AS metric, value::float8 AS value FROM macro_history WHERE $__timeFilter(time) ORDER BY time",
+          "format": "time_series"
+        }
+      ]
+    }
+  ]
+}
