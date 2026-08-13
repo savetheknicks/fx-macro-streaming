@@ -68,6 +68,22 @@ services:
       timeout: 5s
       retries: 10
 
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
   topic-init:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
     container_name: topic-init
@@ -88,3 +104,4 @@ services:
 volumes:
   redpanda_data:
   timescale_data:
+  grafana_data:
